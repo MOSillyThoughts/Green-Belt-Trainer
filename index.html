@@ -22,38 +22,44 @@ const SET=(typeof localStorage!=='undefined'&&localStorage.getItem('gbq_set')===
 function setSet(s){localStorage.setItem('gbq_set',s);location.reload()}
 const LS=KURS?'gbq_kurs_v1':'gbq_v1';const st=JSON.parse(localStorage.getItem(LS)||'{"history":[],"mist":{},"qstat":{}}');
 const save=()=>localStorage.setItem(LS,JSON.stringify(st));
+const SK=KURS?'gbq_kurs_sess_v1':'gbq_sess_v1';
+function ssave(){try{if(!S){localStorage.removeItem(SK);return}localStorage.setItem(SK,JSON.stringify({cat:S.cat,mode:S.mode,mist:S.mist,i:S.i,t:Date.now(),qs:S.qs.map(x=>({id:x.q.id,o:x.opts.map(o=>o.key),sel:x.sel,done:x.done,ok:x.ok}))}))}catch(e){}}
+function sload(){try{const d=JSON.parse(localStorage.getItem(SK)||'null');if(!d||!d.qs||!d.qs.length)return null;const qs=d.qs.filter(x=>byId[x.id]).map(x=>({q:byId[x.id],opts:x.o.map(k=>byId[x.id].options.find(o=>o.key===k)).filter(Boolean),sel:x.sel||[],done:!!x.done,ok:x.ok}));if(qs.length!==d.qs.length)return null;return {cat:d.cat,mode:d.mode,mist:d.mist,i:Math.min(d.i,qs.length-1),t:d.t,qs}}catch(e){return null}}
+function resume(){const s=sload();if(s){S=s;show()}}
+function drop(){S=null;ssave();home()}
+if(typeof navigator!=='undefined'&&navigator.storage&&navigator.storage.persist)navigator.storage.persisted().then(p=>p||navigator.storage.persist()).catch(()=>{});
 const byId=Object.fromEntries(DATA.questions.map(q=>[q.id,q]));
 function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function isCorrect(q,sel){const c=q.options.filter(o=>o.correct).map(o=>o.key).sort().join();return [...sel].sort().join()===c}
 const $=h=>{document.getElementById('app').innerHTML=h};const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let S=null;
 function home(){const mods=[...new Set(DATA.questions.map(q=>q.module))];const nm=Object.keys(st.mist).length;
-const ck=Object.keys(DATA.catalogs)[0];$(`<div class="card"><b>Übungsmodus</b><div class="seg" style="margin-top:6px"><button class="${KURS?'sec':''}" onclick="setSet('katalog')">📋 Prüfungsfragen (Katalog)</button><button class="${KURS?'':'sec'}" onclick="setSet('kurs')">📚 Kursunterlagen</button></div></div>
+const ck=Object.keys(DATA.catalogs)[0];const rs=sload();$(`${rs?`<div class="card" style="border:2px solid #1b7f3b"><b>▶️ Offene Sitzung</b><br><span class="small">${rs.mist?'Fehlertraining':rs.mode==='learn'?'Lernmodus':'Prüfungsmodus'} · Frage ${rs.i+1}/${rs.qs.length} · ${new Date(rs.t).toLocaleString('de-AT')}</span><br><button onclick="resume()">Sitzung fortsetzen</button><button class="sec" onclick="if(confirm('Sitzung verwerfen?'))drop()">Verwerfen</button></div>`:''}<div class="card"><b>Übungsmodus</b><div class="seg" style="margin-top:6px"><button class="${KURS?'sec':''}" onclick="setSet('katalog')">📋 Prüfungsfragen (Katalog)</button><button class="${KURS?'':'sec'}" onclick="setSet('kurs')">📚 Kursunterlagen</button></div></div>
 <div class="card"><input type="hidden" id="cat" value="${ck}"><b>${esc(DATA.catalogs[ck].label)}</b> <span class="small">(${DATA.questions.length} Fragen)</span><br><br><b>${KURS?'Kapitel':'Modul'}</b><select id="mod"><option value="">${KURS?'Alle Kapitel':'Alle Module'}</option>${mods.map(m=>`<option>${esc(m)}</option>`).join('')}</select>
 <b>Modus</b><div class="seg"><label><input type="radio" name="mode" value="learn" checked>Lernmodus</label><label><input type="radio" name="mode" value="exam">Prüfungsmodus</label></div>
 <b>Anzahl Fragen</b><div class="seg">${['all',10,20,30].map((n,i)=>`<label><input type="radio" name="n" value="${n}" ${i?'':'checked'}>${n=='all'?'Alle':n}</label>`).join('')}</div>
 <button onclick="start()">Start</button><button class="sec" onclick="start(true)" ${nm?'':'disabled'}>Fehlertraining (${nm})</button><button class="sec" onclick="stats()">Statistik</button><button class="sec" onclick="ctrl()">🔍 Kontroll-Modus</button></div>
-<div class="small">Bestanden ab 60 %. Eine Frage zählt nur, wenn exakt alle richtigen Antworten angekreuzt sind.</div>`)}
+<div class="small">💾 Fortschritt wird automatisch auf diesem Gerät/Browser gespeichert. Zum Übertragen auf ein anderes Gerät: Statistik → Backup.</div><div class="small">Bestanden ab 60 %. Eine Frage zählt nur, wenn exakt alle richtigen Antworten angekreuzt sind.</div>`)}
 function start(mist){const cat=document.getElementById('cat').value,mod=document.getElementById('mod').value,mode=document.querySelector('[name=mode]:checked').value,n=document.querySelector('[name=n]:checked').value;
 let ids=DATA.catalogs[cat].questionIds.filter(i=>!mod||byId[i].module===mod);if(mist)ids=ids.filter(i=>st.mist[cat+':'+i]!=null);
 ids=shuffle(ids);if(n!=='all')ids=ids.slice(0,+n);if(!ids.length){alert('Keine Fragen für diese Auswahl.');return}
-S={cat,mode:mist?'learn':mode,mist:!!mist,qs:ids.map(i=>({q:byId[i],opts:shuffle(byId[i].options),sel:[],done:false})),i:0};show()}
+S={cat,mode:mist?'learn':mode,mist:!!mist,qs:ids.map(i=>({q:byId[i],opts:shuffle(byId[i].options),sel:[],done:false})),i:0};ssave();show()}
 function show(){const it=S.qs[S.i],q=it.q;
 $(`<div class="small">${esc(DATA.catalogs[S.cat].label)} · ${S.mist?'Fehlertraining':S.mode==='learn'?'Lernmodus':'Prüfungsmodus'} · Frage ${S.i+1}/${S.qs.length}</div><div class="bar"><div style="width:${100*S.i/S.qs.length}%"></div></div>
 <div class="card"><div class="small">${esc(q.module)}</div><h3>${esc(q.question)}</h3>${it.opts.map(o=>`<label class="opt" id="o_${o.key}"><input type="checkbox" value="${o.key}" ${it.sel.includes(o.key)?'checked':''} ${it.done?'disabled':''}><span>${esc(o.text)}</span></label>`).join('')}
 <div id="fb"></div></div><div id="btns"></div>`);
-document.querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=()=>{it.sel=[...document.querySelectorAll('input:checked')].map(x=>x.value)});
-if(it.done)feedback();else document.getElementById('btns').innerHTML=S.mode==='learn'?`<button onclick="check()">Prüfen</button>`:`${S.i?'<button class="sec" onclick="S.i--;show()">Zurück</button>':''}<button onclick="next()">${S.i<S.qs.length-1?'Weiter':'Abgeben'}</button>`;
-document.getElementById('btns').innerHTML+=`<button class="sec" onclick="if(confirm('Abbrechen?'))home()">Abbrechen</button>`}
+document.querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=()=>{it.sel=[...document.querySelectorAll('input:checked')].map(x=>x.value);ssave()});
+if(it.done)feedback();else document.getElementById('btns').innerHTML=S.mode==='learn'?`<button onclick="check()">Prüfen</button>`:`${S.i?'<button class="sec" onclick="S.i--;ssave();show()">Zurück</button>':''}<button onclick="next()">${S.i<S.qs.length-1?'Weiter':'Abgeben'}</button>`;
+document.getElementById('btns').innerHTML+=`<button class="sec" onclick="if(confirm('Sitzung abbrechen? (Sie kann sonst später fortgesetzt werden – dafür einfach zur Startseite.)'))drop()">Abbrechen</button>`}
 function record(it){const k=S.cat+':'+it.q.id,ok=isCorrect(it.q,it.sel);it.ok=ok;const qs=st.qstat[it.q.id]||(st.qstat[it.q.id]={r:0,n:0});qs.n++;if(ok)qs.r++;
 if(!ok)st.mist[k]=0;else if(st.mist[k]!=null){st.mist[k]++;if(st.mist[k]>=2)delete st.mist[k]}}
-function check(){const it=S.qs[S.i];it.done=true;record(it);save();show()}
+function check(){const it=S.qs[S.i];it.done=true;record(it);save();ssave();show()}
 function feedback(){const it=S.qs[S.i];paint(it);document.getElementById('fb').innerHTML=expl(it);document.getElementById('btns').innerHTML=`<button onclick="next()">${S.i<S.qs.length-1?'Weiter':'Auswertung'}</button>`}
 function paint(it,pre=''){it.q.options.forEach(o=>{const el=document.getElementById(pre+'o_'+o.key);if(!el)return;const s=it.sel.includes(o.key);el.classList.add(o.correct&&s?'ok':!o.correct&&s?'bad':o.correct?'miss':'x')})}
 function expl(it){return `<p><b>${it.ok?'✅ Richtig':'❌ Falsch'}</b></p><p class="small">${esc(it.q.explanation)}</p>${it.q.src?`<p class="small">📄 Quelle: ${esc(it.q.src)}</p>`:''}${it.q.flags.map(f=>`<div class="flag">⚠️ Hinweis: ${esc(f)}</div>`).join('')}`}
-function next(){if(S.i<S.qs.length-1){S.i++;show()}else finish()}
+function next(){if(S.i<S.qs.length-1){S.i++;ssave();show()}else finish()}
 function finish(){if(S.mode==='exam')S.qs.forEach(record);const r=S.qs.filter(x=>x.ok).length,p=Math.round(100*r/S.qs.length),pass=p>=60;
-st.history.unshift({d:new Date().toLocaleString('de-AT'),cat:DATA.catalogs[S.cat].label,mode:S.mist?'Fehler':S.mode==='learn'?'Lernen':'Prüfung',r,n:S.qs.length,p,pass});st.history=st.history.slice(0,100);save();
+st.history.unshift({d:new Date().toLocaleString('de-AT'),cat:DATA.catalogs[S.cat].label,mode:S.mist?'Fehler':S.mode==='learn'?'Lernen':'Prüfung',r,n:S.qs.length,p,pass});st.history=st.history.slice(0,100);save();const R=S;S=null;ssave();S=R;
 $(`<div class="card"><h2>${pass?'🎉 Bestanden':'Nicht bestanden'}</h2><p><b>${r} / ${S.qs.length}</b> richtig (${p} %) – Grenze 60 %</p><button onclick="home()">Zur Startseite</button></div>`+
 (S.mode==='exam'?S.qs.map((it,n)=>`<div class="card"><div class="small">${n+1}. ${esc(it.q.module)}</div><b>${esc(it.q.question)}</b>${it.opts.map(o=>`<label class="opt" id="r${n}o_${o.key}"><span>${it.sel.includes(o.key)?'☑':'☐'} ${esc(o.text)}</span></label>`).join('')}${expl(it)}</div>`).join(''):''));
 if(S.mode==='exam')S.qs.forEach((it,n)=>paint(it,'r'+n))}
@@ -62,6 +68,9 @@ DATA.questions.forEach(q=>{const s=st.qstat[q.id];if(!s)return;const m=mods[q.mo
 $(`<div class="card"><h3>Statistik</h3><p>Versuche: ${h.length} · Bestehensquote: ${h.length?Math.round(100*h.filter(x=>x.pass).length/h.length):0} % (Prüfungen: ${ex.length?Math.round(100*ex.filter(x=>x.pass).length/ex.length)+' %':'–'})</p>
 <p>Offene Fehlerfragen: ${Object.keys(st.mist).length}</p><h4>Nach ${KURS?'Kapitel':'Modul'}</h4><table>${Object.entries(mods).map(([m,s])=>`<tr><td>${esc(m)}</td><td>${Math.round(100*s.r/s.n)} % (${s.r}/${s.n})</td></tr>`).join('')||'<tr><td>Noch keine Daten</td></tr>'}</table>
 <h4>Verlauf</h4><table>${h.map(x=>`<tr><td>${x.d}</td><td>${esc(x.cat)}<br><span class="small">${x.mode}</span></td><td>${x.r}/${x.n} (${x.p} %) ${x.pass?'✅':'❌'}</td></tr>`).join('')}</table>
+<h4>💾 Backup</h4><p class="small">Der Fortschritt ist pro Gerät/Browser gespeichert. Mit dem Backup überträgst du ihn (beide Übungsmodi) auf ein anderes Gerät.</p>
+<button onclick="bexport()">Fortschritt exportieren</button><button class="sec" onclick="document.getElementById('bf').click()">Fortschritt importieren (Datei)</button><input type="file" id="bf" accept=".json,application/json,text/plain" style="display:none" onchange="bfile(this)">
+<textarea id="bt" placeholder="…oder Backup-Text hier einfügen" style="width:100%;font-size:14px;padding:8px;border-radius:8px;border:1px solid #cfd9d2;margin-top:6px"></textarea><button class="sec" onclick="bimportUI(document.getElementById('bt').value)">Eingefügten Text importieren</button><br><br>
 <button onclick="home()">Zurück</button><button class="sec" onclick="if(confirm('Alle Daten löschen?')){localStorage.removeItem('${LS}');location.reload()}">Zurücksetzen</button></div>`)}
 const CK=KURS?'gbq_kurs_ctrl_v1':'gbq_ctrl_v1';const cs=JSON.parse(localStorage.getItem(CK)||'{}');const csave=()=>localStorage.setItem(CK,JSON.stringify(cs));
 let CF={flag:false,q:''};
@@ -86,5 +95,18 @@ function exportText(){const E=DATA.questions.filter(q=>cs[q.id]&&cs[q.id].s==='e
 return `${DATA.catalogs[Object.keys(DATA.catalogs)[0]].label} – Kontrolle (${new Date().toLocaleString('de-AT')})\nGeprüft: ${ch}/${DATA.questions.length}, Fehler: ${E.length}\n\n`+E.map(q=>`Frage ${q.nr} (${q.module}${q.src?', Quelle: '+q.src:''}): ${q.question}\n`+q.options.map(o=>`  ${o.correct?'[x]':'[ ]'} ${o.key}) ${o.text}`).join('\n')+`\n  Notiz: ${(cs[q.id].n||'').trim()||'–'}\n`).join('\n')}
 function cexport(){const t=exportText();if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>alert('Fehlerliste kopiert – auch als Datei heruntergeladen.'),()=>{});
 const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/plain'}));a.download=KURS?'kursunterlagen-fehlerliste.txt':'green-belt-fehlerliste.txt';a.click()}
-if(typeof document!=='undefined')home();
+function backupObj(){const k={};for(let i=0;i<localStorage.length;i++){const n=localStorage.key(i);if(/^gbq_/.test(n))k[n]=localStorage.getItem(n)}return {app:'gbq',v:1,date:new Date().toISOString(),keys:k}}
+function bexport(){const t=JSON.stringify(backupObj());if(navigator.clipboard)navigator.clipboard.writeText(t).catch(()=>{});const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'application/json'}));a.download='green-belt-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();alert('Backup heruntergeladen und in die Zwischenablage kopiert.')}
+function bparse(t){let d;try{d=JSON.parse(t)}catch(e){throw new Error('Kein gültiges JSON.')}if(!d||d.app!=='gbq'||typeof d.keys!=='object')throw new Error('Keine Green-Belt-Sicherung.');
+for(const[k,v]of Object.entries(d.keys)){if(!/^gbq_/.test(k)||typeof v!=='string')throw new Error('Ungültiger Eintrag: '+k);JSON.parse(v)}return d}
+function mergeQ(a,b){a=a||{history:[],mist:{},qstat:{}};const h=[...(a.history||[]),...(b.history||[])],seen=new Set(),hist=h.filter(x=>{const s=JSON.stringify(x);if(seen.has(s))return false;seen.add(s);return true}).slice(0,100);
+const qstat={...(a.qstat||{})};for(const[k,v]of Object.entries(b.qstat||{})){const o=qstat[k];qstat[k]=!o||v.n>o.n?v:o}return {...a,history:hist,mist:{...(a.mist||{}),...(b.mist||{})},qstat}}
+function bimport(t,mode){const d=bparse(t);for(const[k,v]of Object.entries(d.keys)){let val=v;const cur=localStorage.getItem(k);
+if(mode==='merge'&&cur){const A=JSON.parse(cur),B=JSON.parse(v);if(/_v1$/.test(k)&&!/ctrl|sess/.test(k))val=JSON.stringify(mergeQ(A,B));else if(/ctrl/.test(k)){const m={...A};for(const[i,c]of Object.entries(B))m[i]={...(A[i]||{}),...c};val=JSON.stringify(m)}else if(/sess/.test(k))val=cur;else val=cur}
+localStorage.setItem(k,val)}return Object.keys(d.keys).length}
+function bimportUI(t){if(!t||!t.trim())return alert('Kein Backup-Text.');try{bparse(t)}catch(e){return alert('Import fehlgeschlagen: '+e.message)}
+const r=confirm('Backup gültig. OK = mit vorhandenem Fortschritt ZUSAMMENFÜHREN, Abbrechen = weitere Optionen.');let mode=r?'merge':null;if(!r){if(confirm('Vorhandenen Fortschritt durch das Backup ERSETZEN?'))mode='replace';else return}
+if(mode==='replace')Object.keys(backupObj().keys).forEach(k=>localStorage.removeItem(k));const n=bimport(t,mode);alert(n+' Einträge importiert.');location.reload()}
+function bfile(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>bimportUI(r.result);r.readAsText(f);inp.value=''}
+if(typeof document!=='undefined'){document.addEventListener('visibilitychange',()=>{if(S)ssave()});home()}
 </script></body></html>
